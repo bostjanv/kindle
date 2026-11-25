@@ -42,4 +42,4 @@ class Cached:
         return self.value
 
 
-from . import clock, weather, calendar, status  # noqa: E402,F401  (registers widgets)
+from . import clock, weather, calendar, status, xkcd  # noqa: E402,F401  (registers widgets)

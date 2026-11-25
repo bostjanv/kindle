@@ -23,7 +23,7 @@ case "$stage" in
     jailbreak) files+=("$DL/kindle-jailbreak-0.13.N/Update_jailbreak_0.13.N_${DEV}_install.bin|Update_jailbreak_0.13.N_${DEV}_install.bin") ;;
     launchpad) files+=("$DL/lpad-pkg-001d/update_launchpad_0.0.1d_${DEV}_install.bin|update_launchpad_0.0.1d_${DEV}_install.bin") ;;
     dashboard)
-        sed "s/^SERVER_IP=.*/SERVER_IP=${SERVER_IP:-192.168.1.100}/; s/^SERVER_PORT=.*/SERVER_PORT=${SERVER_PORT:-8080}/" \
+        sed "s/^SERVER_IP=.*/SERVER_IP=${SERVER_IP:-192.168.1.100}/; s/^SERVER_PORT=.*/SERVER_PORT=${SERVER_PORT:-8080}/; s/^DEBUG_KEYS=.*/DEBUG_KEYS=${DEBUG_KEYS:-no}/" \
             "$ROOT/kindle/dashboard/dashboard.conf" > "$TMP/dashboard.conf"
         files+=("$ROOT/kindle/dashboard/dashboard.sh|dashboard/dashboard.sh"
                 "$TMP/dashboard.conf|dashboard/dashboard.conf"
@@ -31,7 +31,9 @@ case "$stage" in
     autostart)
         [ -f "$ROOT/kindle/package/out/Update_dashboard_${DEV}_install.bin" ] || \
             KINDLETOOL=${KINDLETOOL:-$ROOT/build/KindleTool/KindleTool/Release/kindletool} "$ROOT/kindle/package/build.sh" "$DEV" >/dev/null
-        files+=("$ROOT/kindle/package/out/Update_dashboard_${DEV}_install.bin|Update_dashboard_${DEV}_install.bin") ;;
+        : > "$TMP/AUTOSTART"
+        files+=("$ROOT/kindle/package/out/Update_dashboard_${DEV}_install.bin|Update_dashboard_${DEV}_install.bin"
+                "$TMP/AUTOSTART|dashboard/AUTOSTART") ;;
     *) sed -n '2,7p' "$0"; exit 1 ;;
 esac
 done

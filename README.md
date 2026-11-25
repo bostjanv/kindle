@@ -1,7 +1,8 @@
 # Kindle dashboard
 
 Turns a **Kindle Keyboard 3G (EU, serial `B00A…`, FW 3.2.1)** into an always-on
-e-ink dashboard showing a clock, local weather and upcoming calendar events.
+e-ink dashboard with several screens (clock + weather + calendar, a full calendar,
+xkcd). The **page-turn buttons** switch screens.
 
 ```
  PC on the LAN                               Kindle (jailbroken)
@@ -44,6 +45,9 @@ To keep it running, use `server/kindle-dash.service` (a systemd user unit).
 
 ## 2. Jailbreak + install (one-time)
 
+`tools/quickcopy.sh <stage>…` waits for the Kindle, copies, verifies by reading back, then ejects.
+Autostart: `tools/quickcopy.sh autostart` (package + `dashboard/AUTOSTART` flag), then Update Your Kindle.
+
 Every step works the same way: plug the Kindle in so it shows **USB drive mode**,
 copy a file to it, unplug, then on the Kindle press
 **Home → Menu → Settings → Menu → Update Your Kindle**.
@@ -55,11 +59,15 @@ Otherwise `tools/deploy.sh` does it over raw USB:
 |---|---|---|
 | 1. Jailbreak | `tools/deploy.sh jailbreak` → `Update_jailbreak_0.13.N_k3gb_install.bin` (FW 3.2.1+; the `-3.0-to-3.2` file is only for FW ≤ 3.2; on 3.2.1 it fails with U004) | Update Your Kindle; it reboots |
 | 2. Launchpad | `tools/deploy.sh launchpad` → `update_launchpad_0.0.1d_k3gb_install.bin` | Update Your Kindle |
-| 3. Dashboard | `SERVER_IP=<pc-ip> tools/deploy.sh dashboard` → `dashboard/`, `launchpad/dashboard.ini`, `Update_dashboard_k3gb_install.bin` | Update Your Kindle (installs the autostart hook) |
+| 3. Dashboard | `SERVER_IP=<pc-ip> tools/quickcopy.sh launchpad dashboard` (or `tools/deploy.sh dashboard`) → `dashboard/`, `launchpad/dashboard.ini`, `Update_dashboard_k3gb_install.bin` | Update Your Kindle (installs the autostart hook) |
 
 Use only the `k3gb` packages. They are the builds for the EU 3G model (`B00A`).
 
 ## 3. Use it
+
+**Next Page / Prev Page** (either side) or the 5-way **left/right** switch between the
+screens defined under `[[screens]]` in `config.toml`. The dots in the footer show which
+one is on.
 
 | Hotkey (press Shift, release, then the letters) | Action |
 |---|---|
@@ -78,19 +86,19 @@ the last refresh.
 
 ## Adding a widget
 
-Create `server/kindle_dash/widgets/xkcd.py`:
+Create `server/kindle_dash/widgets/transit.py`:
 
 ```python
 from . import Cached, register
 
-@register("xkcd")
-class Xkcd:
+@register("transit")
+class Transit:
     def __init__(self, cfg): ...
     def draw(self, img, draw, box, ctx): ...   # draw inside box (x0, y0, x1, y1)
 ```
 
-Import it at the bottom of `widgets/__init__.py`, then add `[[layout]] widget = "xkcd"`
-(and an `[xkcd]` section) to `config.toml`. Wrap network calls in `Cached` so a
+Import it at the bottom of `widgets/__init__.py`, then add `[[layout]] widget = "transit"`
+(and an `[transit]` section) to `config.toml`. Wrap network calls in `Cached` so a
 failure shows the last good data instead of a blank panel.
 
 ## Undo

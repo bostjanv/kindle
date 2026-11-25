@@ -10,22 +10,50 @@ height = 800
 orientation = "portrait"   # or "landscape" (rendered 800x600 and rotated for the panel)
 timezone = "Europe/Ljubljana"
 
-# Widgets are stacked top to bottom. `height` in pixels; a widget without a
-# height takes whatever space is left (at most one should omit it).
-[[layout]]
-widget = "clock"
-height = 220
+# Screens: the Kindle's page-turn buttons (and 5-way left/right) step through
+# these in order, wrapping around. Each screen is a stack of widgets, top to
+# bottom; `height` is in pixels and a widget without one takes the space left
+# over (at most one per screen). Extra keys on a layout entry override that
+# widget's [section] settings for this screen only.
 
-[[layout]]
-widget = "weather"
-height = 290
+[[screens]]
+name = "Home"
+  [[screens.layout]]
+  widget = "clock"
+  height = 220
+  [[screens.layout]]
+  widget = "weather"
+  height = 290
+  [[screens.layout]]
+  widget = "calendar"
+  [[screens.layout]]
+  widget = "status"
+  height = 28
 
-[[layout]]
-widget = "calendar"
+[[screens]]
+name = "Calendar"
+  [[screens.layout]]
+  widget = "clock"
+  height = 80                  # < 130 px: compact one-line clock
+  [[screens.layout]]
+  widget = "calendar"
+  days_ahead = 14
+  [[screens.layout]]
+  widget = "status"
+  height = 28
 
-[[layout]]
-widget = "status"
-height = 28
+[[screens]]
+name = "xkcd"
+  [[screens.layout]]
+  widget = "clock"
+  height = 80
+  [[screens.layout]]
+  widget = "xkcd"
+  min_aspect = 0               # the whole screen is available: any shape fits
+  show_alt = true
+  [[screens.layout]]
+  widget = "status"
+  height = 28
 
 [clock]
 time_format = "%H:%M"           # e.g. "%I:%M" for 12-hour
@@ -48,3 +76,10 @@ sources = [
     # { url = "https://calendar.google.com/calendar/ical/.../basic.ics", name = "Personal" },
     # { url = "/home/me/work.ics", name = "Work" },
 ]
+
+[xkcd]
+mode = "random"                # or "latest"
+refresh_minutes = 60           # pick a new random comic this often
+show_title = true
+show_alt = false               # alt text under the comic (takes space)
+min_aspect = 1.3               # random: prefer comics at least this wide/tall (0 = any shape)

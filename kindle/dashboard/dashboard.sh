@@ -4,20 +4,26 @@
 #   sh /mnt/us/dashboard/dashboard.sh start|stop|restart|refresh|status
 #
 # Periodically downloads a 600x800 greyscale PNG from the dashboard server
-# and draws it with eips. Settings: /mnt/us/dashboard/dashboard.conf
+# and draws it with eips. The page-turn buttons (and 5-way left/right) switch
+# between the server's screens. Settings: /mnt/us/dashboard/dashboard.conf
 
-DIR=/mnt/us/dashboard
+DIR=${DASH_DIR:-/mnt/us/dashboard}
 CONF=$DIR/dashboard.conf
-PIDFILE=/var/run/dashboard.pid
+PIDFILE=${DASH_PIDFILE:-/var/run/dashboard.pid}
 RUNCOPY=/tmp/dashboard-run.sh
 IMG=/tmp/dashboard.png
-LOG=/tmp/dashboard.log
+SCREEN_FILE=/tmp/dashboard.screen
+# Log on the USB drive so it can be read from a PC (writes are simply lost
+# while the Kindle is in USB drive mode).
+LOG=$DIR/dashboard.log
 
-log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> $LOG; }
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> $LOG 2>/dev/null; }
 
 load_conf() {
     SERVER_IP=192.168.1.100; SERVER_PORT=8080; SERVER_URL=
     INTERVAL=60; FULL_REFRESH_EVERY=30; STOP_FRAMEWORK=yes; FETCH_TIMEOUT=30
+    NEXT_KEYS="191 104 106"; PREV_KEYS="193 105"
+    KEY_DEVICES="/dev/input/event0 /dev/input/event1"; DEBUG_KEYS=no
     # dashboard.conf may have been saved with Windows line endings
     [ -f "$CONF" ] && eval "$(tr -d '\r' < "$CONF")"
     [ -n "$SERVER_URL" ] || SERVER_URL="http://$SERVER_IP:$SERVER_PORT/dashboard.png"
@@ -30,6 +36,10 @@ battery() {
     [ -n "$b" ] || b=$(gasgauge-info -c 2>/dev/null | tr -dc '0-9')
     echo "$b"
 }
+
+screen() { s=$(cat $SCREEN_FILE 2>/dev/null); echo "${s:-0}"; }
+
+url() { echo "$SERVER_URL?screen=$(screen)&battery=$(battery)"; }
 
 wifi_connected() {
     [ "$(lipc-get-prop -s com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ]
@@ -54,8 +64,10 @@ fetch() {
     wpid=$!
     ( sleep "$FETCH_TIMEOUT"; kill $wpid 2>/dev/null ) &
     kpid=$!
+    # a button press (USR1) interrupts wait early: keep waiting until wget is really done
     wait $wpid
     rc=$?
+    while kill -0 $wpid 2>/dev/null; do wait $wpid; rc=$?; done
     kill $kpid 2>/dev/null
     [ $rc -eq 0 ] && [ -s $IMG.tmp ] && mv $IMG.tmp $IMG
 }
@@ -66,8 +78,44 @@ show_error() {
     eips 1 38 "$1" >/dev/null 2>&1
 }
 
+in_list() { for k in $2; do [ "$k" -eq "$1" ] 2>/dev/null && return 0; done; return 1; }
+
+# Reads raw input events (struct input_event, 16 bytes on the K3's 32-bit ARM:
+# 8 bytes timestamp, u16 type, u16 code, s32 value) from one device and, on a
+# page key press, bumps the screen number and pokes the main loop.
+key_listener() {
+    dev=$1
+    while :; do
+        # od -d prints the (octal) offset, then 8 unsigned 16-bit words:
+        # time(4 words) type code value_lo value_hi. Compare with test -eq,
+        # which is decimal even with od's zero padding.
+        set -- $(dd if="$dev" bs=16 count=1 2>/dev/null | od -d | head -n 1)
+        [ $# -ge 9 ] || { sleep 1; continue; }
+        shift
+        type=$5; code=$6; value=$7
+        [ "$type" -eq 1 ] && [ "$value" -eq 1 ] || continue   # EV_KEY press only
+        code=$(expr "$code" + 0)  # strip zero padding
+        [ "$DEBUG_KEYS" = "yes" ] && log "key $code on $dev"
+        kill -0 $LOOP_PID 2>/dev/null || exit 0   # dashboard was stopped
+        cur=$(screen)
+        if in_list $code "$NEXT_KEYS"; then
+            echo $((cur + 1)) > $SCREEN_FILE
+        elif in_list $code "$PREV_KEYS"; then
+            echo $((cur - 1)) > $SCREEN_FILE
+        else
+            continue
+        fi
+        kill -USR1 $LOOP_PID 2>/dev/null
+    done
+}
+
+draw() {  # $1 = full|partial
+    if [ "$1" = full ]; then eips -f -g $IMG >/dev/null 2>&1; else eips -g $IMG >/dev/null 2>&1; fi
+}
+
 loop() {
     load_conf
+    LOOP_PID=$$
     log "started; url=$SERVER_URL interval=$INTERVAL"
     lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
     if [ "$STOP_FRAMEWORK" = "yes" ]; then
@@ -75,31 +123,47 @@ loop() {
         sleep 2
     fi
     eips -c >/dev/null 2>&1
+
+    LISTENERS=
+    for dev in $KEY_DEVICES; do
+        [ -e "$dev" ] || continue
+        key_listener "$dev" &
+        LISTENERS="$LISTENERS $!"
+    done
+    trap 'kill $LISTENERS $SLEEP_PID 2>/dev/null; exit 0' TERM INT
+    # A button press interrupts the sleep below (wait returns early on a trapped signal).
+    trap 'WOKEN=1' USR1
+
     n=0
     fails=0
     while :; do
-        url="$SERVER_URL?battery=$(battery)"
-        if fetch "$url" || { ensure_wifi && fetch "$url"; }; then
+        WOKEN=
+        if fetch "$(url)" || { ensure_wifi && fetch "$(url)"; }; then
             fails=0
-            if [ $((n % FULL_REFRESH_EVERY)) -eq 0 ]; then
-                eips -f -g $IMG >/dev/null 2>&1
-            else
-                eips -g $IMG >/dev/null 2>&1
-            fi
+            if [ $((n % FULL_REFRESH_EVERY)) -eq 0 ]; then draw full; else draw partial; fi
             n=$((n + 1))
         else
             fails=$((fails + 1))
-            log "fetch failed ($fails): $url"
+            log "fetch failed ($fails): $(url)"
             show_error "No dashboard from $SERVER_IP ($fails)"
         fi
+        # button pressed while fetching: fetch the new screen right away, with a full refresh
+        [ -n "$WOKEN" ] && { n=0; continue; }
         # wake up just after the next INTERVAL boundary so the clock is exact
         now=$(date +%s)
-        sleep $((INTERVAL - now % INTERVAL + 1))
+        sleep $((INTERVAL - now % INTERVAL + 1)) &
+        SLEEP_PID=$!
+        wait $SLEEP_PID
+        kill $SLEEP_PID 2>/dev/null
+        # switching screens: do a full (flashing) refresh so no ghost of the old screen remains
+        [ -n "$WOKEN" ] && n=0
     done
 }
 
 start() {
     if running; then echo "already running"; return 0; fi
+    # trim the log on the USB drive
+    [ -f $LOG ] && [ "$(wc -c < $LOG)" -gt 65536 ] && tail -n 200 $LOG > $LOG.tmp && mv $LOG.tmp $LOG
     # Run from a copy in /tmp: /mnt/us disappears while the Kindle is in USB drive mode.
     cp "$0" $RUNCOPY 2>/dev/null || cp $DIR/dashboard.sh $RUNCOPY
     sh $RUNCOPY __loop >/dev/null 2>&1 &
@@ -110,10 +174,13 @@ start() {
 stop() {
     if running; then
         kill "$(cat $PIDFILE)" 2>/dev/null
-        # the loop may be sleeping or inside wget; clean up its children
-        pkill -f "$RUNCOPY __loop" 2>/dev/null
+        sleep 1
     fi
     rm -f $PIDFILE
+    # key readers blocked in dd outlive their listener; end them too
+    for p in $(pidof dd 2>/dev/null); do
+        tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null | grep -q "if=/dev/input/" && kill $p 2>/dev/null
+    done
     lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
     load_conf
     if [ "$STOP_FRAMEWORK" = "yes" ] && ! pidof cvm >/dev/null 2>&1; then
@@ -130,8 +197,8 @@ case "$1" in
     restart) stop; sleep 2; start ;;
     refresh)
         load_conf
-        fetch "$SERVER_URL?battery=$(battery)" && eips -f -g $IMG >/dev/null 2>&1 ;;
-    status) running && echo "running (pid $(cat $PIDFILE))" || echo "stopped"; tail -5 $LOG 2>/dev/null ;;
+        fetch "$(url)" && draw full ;;
+    status) running && echo "running (pid $(cat $PIDFILE)), screen $(screen)" || echo "stopped"; tail -5 $LOG 2>/dev/null ;;
     __loop) loop ;;
     *) echo "usage: $0 start|stop|restart|refresh|status"; exit 1 ;;
 esac

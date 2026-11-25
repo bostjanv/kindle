@@ -1,0 +1,9 @@
+downloads/
+build/
+server/.venv/
+server/config.toml
+server/*.egg-info/
+__pycache__/
+kindle/package/out/
+tools/usbdisk/usbdisk
+*.png

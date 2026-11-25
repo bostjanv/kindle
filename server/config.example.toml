@@ -1,0 +1,50 @@
+# Copy to config.toml and adjust. Run: kindle-dash serve --config config.toml
+
+[server]
+host = "0.0.0.0"     # interface to listen on (0.0.0.0 = all, so the Kindle can reach it)
+port = 8080
+
+[display]
+width = 600          # Kindle Keyboard panel: 600x800
+height = 800
+orientation = "portrait"   # or "landscape" (rendered 800x600 and rotated for the panel)
+timezone = "Europe/Ljubljana"
+
+# Widgets are stacked top to bottom. `height` in pixels; a widget without a
+# height takes whatever space is left (at most one should omit it).
+[[layout]]
+widget = "clock"
+height = 220
+
+[[layout]]
+widget = "weather"
+height = 290
+
+[[layout]]
+widget = "calendar"
+
+[[layout]]
+widget = "status"
+height = 28
+
+[clock]
+time_format = "%H:%M"           # e.g. "%I:%M" for 12-hour
+date_format = "%A, %-d %B"
+
+[weather]
+location_name = "Ljubljana"
+latitude = 46.0569
+longitude = 14.5058
+units = "metric"                # or "imperial"
+refresh_minutes = 15
+forecast_days = 4
+
+[calendar]
+refresh_minutes = 10
+days_ahead = 7
+# Any number of iCalendar sources: http(s) URLs (e.g. Google Calendar's
+# "Secret address in iCal format") or local .ics file paths.
+sources = [
+    # { url = "https://calendar.google.com/calendar/ical/.../basic.ics", name = "Personal" },
+    # { url = "/home/me/work.ics", name = "Work" },
+]

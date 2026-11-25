@@ -26,8 +26,14 @@ case "$stage" in
         sed "s/^SERVER_IP=.*/SERVER_IP=${SERVER_IP:-192.168.1.100}/; s/^SERVER_PORT=.*/SERVER_PORT=${SERVER_PORT:-8080}/; s/^DEBUG_KEYS=.*/DEBUG_KEYS=${DEBUG_KEYS:-no}/" \
             "$ROOT/kindle/dashboard/dashboard.conf" > "$TMP/dashboard.conf"
         files+=("$ROOT/kindle/dashboard/dashboard.sh|dashboard/dashboard.sh"
+                "$ROOT/kindle/dashboard/diag.sh|dashboard/diag.sh"
                 "$TMP/dashboard.conf|dashboard/dashboard.conf"
                 "$ROOT/kindle/launchpad/dashboard.ini|launchpad/dashboard.ini") ;;
+    diag)
+        : > "$TMP/RUN_DIAG"
+        files+=("$ROOT/kindle/dashboard/dashboard.sh|dashboard/dashboard.sh"
+                "$ROOT/kindle/dashboard/diag.sh|dashboard/diag.sh"
+                "$TMP/RUN_DIAG|dashboard/RUN_DIAG") ;;
     autostart)
         [ -f "$ROOT/kindle/package/out/Update_dashboard_${DEV}_install.bin" ] || \
             KINDLETOOL=${KINDLETOOL:-$ROOT/build/KindleTool/KindleTool/Release/kindletool} "$ROOT/kindle/package/build.sh" "$DEV" >/dev/null

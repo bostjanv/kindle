@@ -38,8 +38,9 @@ def _rem2ics_cmd() -> str:
 
 def _load_remind(path: str, start: date, months: int, zone: str | None) -> bytes:
     f = Path(path).expanduser()
-    # rem2ics treats a missing input file as an output file and creates it, so check first.
-    if not f.is_file():
+    # A file or a directory of *.rem files. rem2ics silently returns an empty
+    # calendar for a missing path, so report it instead.
+    if not f.exists():
         raise FileNotFoundError(f"{f} not found")
     cmd = [_rem2ics_cmd(), "-s", start.isoformat(), "-m", str(months)]
     if zone:  # timezone the Remind times are in

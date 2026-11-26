@@ -231,6 +231,14 @@ loop() {
             kill $LISTENERS 2>/dev/null
             exit 0
         fi
+        # the Kindle UI came back (e.g. it was still booting when we stopped
+        # it): stop it again and force a full redraw over it
+        if [ "$STOP_FRAMEWORK" = "yes" ] && pidof cvm >/dev/null 2>&1; then
+            log "Kindle UI is running again; stopping it"
+            /etc/init.d/framework stop >/dev/null 2>&1
+            sleep 2
+            drawn=
+        fi
         keep_awake
         cur=$(screen)
         u="$SERVER_URL?screen=$cur&battery=$(battery)"

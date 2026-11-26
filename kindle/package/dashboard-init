@@ -1,15 +1,26 @@
 #!/bin/sh
 # Starts the dashboard at boot if /mnt/us/dashboard/AUTOSTART exists.
+# Runs early (rcS), long before the Kindle UI is up, so it waits in the
+# background until the UI has started and settled, then takes over the screen.
+LOG=/mnt/us/dashboard/dashboard.log
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') boot: $*" >> $LOG 2>/dev/null; }
+
 case "$1" in
     start)
-        if [ -f /mnt/us/dashboard/AUTOSTART ]; then
-            # give the framework and wifi time to come up first
-            ( sleep 90; sh /mnt/us/dashboard/dashboard.sh start ) >/dev/null 2>&1 &
-        fi
+        [ -f /mnt/us/dashboard/AUTOSTART ] || exit 0
+        (
+            trap '' HUP
+            log "autostart: waiting for the Kindle UI"
+            i=0
+            while ! pidof cvm >/dev/null 2>&1 && [ $i -lt 300 ]; do sleep 5; i=$((i + 5)); done
+            if pidof cvm >/dev/null 2>&1; then log "Kindle UI up after ${i}s"; else log "Kindle UI not up after ${i}s"; fi
+            # let the UI finish loading and wifi connect before stopping it
+            sleep 45
+            log "starting dashboard"
+            sh /mnt/us/dashboard/dashboard.sh start
+        ) </dev/null >/dev/null 2>&1 &
         ;;
     stop)
-        [ -f /var/run/dashboard.pid ] && kill "$(cat /var/run/dashboard.pid)" 2>/dev/null
-        rm -f /var/run/dashboard.pid
         ;;
     *)
         echo "Usage: $0 {start|stop}" >&2

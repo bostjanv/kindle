@@ -70,9 +70,13 @@ forecast_days = 4
 [calendar]
 refresh_minutes = 10
 days_ahead = 7
-# Any number of iCalendar sources: http(s) URLs (e.g. Google Calendar's
-# "Secret address in iCal format") or local .ics file paths.
+# Any number of sources: iCalendar http(s) URLs (e.g. Google Calendar's
+# "Secret address in iCal format") or local .ics file paths, and Remind files,
+# converted with rem2ics (pip package `remind`; needs the `remind` program on
+# PATH, e.g. `apt install remind`). `timezone` on a Remind source sets the zone
+# its times are in (default: [display] timezone).
 sources = [
+    { remind = "~/.reminders", name = "Remind" },
     # { url = "https://calendar.google.com/calendar/ical/.../basic.ics", name = "Personal" },
     # { url = "/home/me/work.ics", name = "Work" },
 ]

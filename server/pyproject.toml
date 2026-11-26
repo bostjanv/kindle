@@ -9,6 +9,7 @@ dependencies = [
     "icalendar>=5.0",
     "recurring-ical-events>=2.1",
     "tzdata",
+    "remind>=0.19",   # rem2ics, for Remind sources (also needs the `remind` program)
 ]
 
 [project.scripts]

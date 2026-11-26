@@ -33,13 +33,16 @@ widgets (xkcd, transit and so on) only need Python changes on the PC.
 ```sh
 cd server
 python3 -m venv .venv && .venv/bin/pip install -e .
-cp config.example.toml config.toml     # set location, timezone, calendar .ics URLs
+cp config.example.toml config.toml     # set location, timezone, calendar sources
 .venv/bin/kindle-dash serve -c config.toml
 ```
 
 Open `http://<pc-ip>:8080/` in a browser to preview the dashboard. The Kindle
 fetches `http://<pc-ip>:8080/dashboard.png`. For Google Calendar, use
 *Settings → your calendar → Secret address in iCal format*.
+For a [Remind](https://dianne.skoll.ca/projects/remind/) file, add
+`{ remind = "~/.reminders" }` to `sources`. It is converted with `rem2ics`, which
+`pip install` brings in, and it also needs the `remind` program (`apt install remind`).
 
 To keep it running, use `server/kindle-dash.service` (a systemd user unit).
 

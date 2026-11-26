@@ -14,6 +14,7 @@ RUNCOPY=/tmp/dashboard-run.sh
 IMG=/tmp/dashboard.png
 SCREEN_FILE=/tmp/dashboard.screen
 SLEEP_FILE=/tmp/dashboard.sleep
+TIME_FILE=/tmp/dashboard.time
 # Log on the USB drive so it can be read from a PC (writes are simply lost
 # while the Kindle is in USB drive mode).
 LOG=$DIR/dashboard.log
@@ -28,6 +29,7 @@ load_conf() {
     # dashboard.conf may have been saved with Windows line endings
     [ -f "$CONF" ] && eval "$(tr -d '\r' < "$CONF")"
     [ -n "$SERVER_URL" ] || SERVER_URL="http://$SERVER_IP:$SERVER_PORT/dashboard.png"
+    TIME_URL="${SERVER_URL%/*}/time"
 }
 
 # PIDs of every dashboard loop process (the loop shell and its listener
@@ -70,9 +72,10 @@ ensure_wifi() {
     return 1
 }
 
-fetch() {
-    rm -f $IMG.tmp
-    wget -q -O $IMG.tmp "$1" &
+# download $1 to $2, giving up after FETCH_TIMEOUT seconds
+download() {
+    rm -f "$2"
+    wget -q -O "$2" "$1" &
     wpid=$!
     ( sleep "$FETCH_TIMEOUT"; kill $wpid 2>/dev/null ) &
     kpid=$!
@@ -81,7 +84,22 @@ fetch() {
     rc=$?
     while kill -0 $wpid 2>/dev/null; do wait $wpid; rc=$?; done
     kill $kpid 2>/dev/null
-    [ $rc -eq 0 ] && [ -s $IMG.tmp ] && mv $IMG.tmp $IMG
+    [ $rc -eq 0 ] && [ -s "$2" ]
+}
+
+fetch() { download "$1" $IMG.tmp && mv $IMG.tmp $IMG; }
+
+# Seconds the server's clock is ahead of ours, kept in CLOCK_OFFSET. The
+# Kindle's clock drifts (nothing sets it while the framework is stopped), and
+# the server draws the clock from its own time, so refreshes are timed by the
+# server's clock. On failure the previous offset is kept.
+sync_clock() {
+    download "$TIME_URL" $TIME_FILE || return 1
+    t=$(tr -dc '0-9' < $TIME_FILE)
+    [ -n "$t" ] || return 1
+    o=$((t - $(date +%s)))
+    [ "$o" != "$CLOCK_OFFSET" ] && log "clock offset to server: ${o}s"
+    CLOCK_OFFSET=$o
 }
 
 show_error() {
@@ -172,6 +190,7 @@ loop() {
 
     n=0
     fails=0
+    CLOCK_OFFSET=0
     drawn=
     while :; do
         # not the official instance (stopped, or a duplicate start)? quit
@@ -194,6 +213,7 @@ loop() {
             fi
             n=$((n + 1))
             drawn=$cur
+            sync_clock
         else
             fails=$((fails + 1))
             log "fetch failed ($fails): $u"
@@ -201,9 +221,11 @@ loop() {
         fi
         # button pressed while fetching: get the new screen right away
         [ "$(screen)" != "$cur" ] && continue
-        # wake up just after the next INTERVAL boundary so the clock is exact
-        now=$(date +%s)
-        sleep $((INTERVAL - now % INTERVAL + 1)) &
+        # wake up just after the next INTERVAL boundary of the server's clock
+        # so the clock is exact (2 s margin: the offset is in whole seconds and
+        # measured over the network)
+        now=$(($(date +%s) + CLOCK_OFFSET))
+        sleep $((INTERVAL - now % INTERVAL + 2)) &
         SLEEP_PID=$!
         echo $SLEEP_PID > $SLEEP_FILE
         wait $SLEEP_PID

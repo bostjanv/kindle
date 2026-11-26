@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import logging
 import threading
+import time
 import tomllib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -37,6 +38,8 @@ def make_handler(dash: Dashboard, lock: threading.Lock):
                 return self._send(200, "text/html; charset=utf-8", PREVIEW)
             if url.path == "/health":
                 return self._send(200, "text/plain", b"ok\n")
+            if url.path == "/time":  # Unix time; the Kindle times its refreshes by it
+                return self._send(200, "text/plain", f"{time.time():.0f}\n".encode())
             if url.path in ("/dashboard.png", "/kindle.png"):
                 try:
                     with lock:  # widgets share caches; render one at a time

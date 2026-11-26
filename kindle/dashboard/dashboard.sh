@@ -15,6 +15,7 @@ IMG=/tmp/dashboard.png
 SCREEN_FILE=/tmp/dashboard.screen
 SLEEP_FILE=/tmp/dashboard.sleep
 TIME_FILE=/tmp/dashboard.time
+WGET_ERR=/tmp/dashboard.wget
 # Log on the USB drive so it can be read from a PC (writes are simply lost
 # while the Kindle is in USB drive mode).
 LOG=$DIR/dashboard.log
@@ -59,23 +60,54 @@ wifi_connected() {
     [ "$(lipc-get-prop -s com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ]
 }
 
-ensure_wifi() {
-    wifi_connected && return 0
-    log "wifi not connected, enabling"
-    lipc-set-prop -i com.lab126.wifid enable 1 2>/dev/null
+wait_wifi() {
     i=0
     while [ $i -lt 40 ]; do
-        sleep 1
         wifi_connected && return 0
+        sleep 1
         i=$((i + 1))
     done
     return 1
 }
 
+ensure_wifi() {
+    wifi_connected && return 0
+    log "wifi not connected, enabling"
+    lipc-set-prop -i com.lab126.wifid enable 1 2>/dev/null
+    wait_wifi
+}
+
+# Turn wifi off and on again. cmState can stay CONNECTED on a link that no
+# longer works, and "enable 1" does nothing while wifid is already enabled.
+reset_wifi() {
+    log "resetting wifi"
+    lipc-set-prop -i com.lab126.wifid enable 0 2>/dev/null
+    sleep 3
+    lipc-set-prop -i com.lab126.wifid enable 1 2>/dev/null
+    wait_wifi
+}
+
+# Keep powerd from entering screensaver and then suspend: that switches wifi
+# off, freezes this loop and ignores the page buttons. Stopping the framework
+# can reset the setting, so it is re-asserted on every refresh.
+keep_awake() {
+    lipc-set-prop -i com.lab126.powerd preventScreenSaver 1 2>/dev/null
+    p=$(lipc-get-prop -s com.lab126.powerd state 2>/dev/null)
+    [ -n "$p" ] && [ "$p" != active ] && log "powerd state: $p"
+}
+
+# one line of state for the log when a fetch fails
+net_info() {
+    ip=$(ifconfig wlan0 2>/dev/null | sed -n 's/.*inet addr:*\([0-9.]*\).*/\1/p')
+    echo "wifi=$(lipc-get-prop -s com.lab126.wifid cmState 2>/dev/null) ip=${ip:-none}" \
+        "power=$(lipc-get-prop -s com.lab126.powerd state 2>/dev/null)" \
+        "wget: $(tr '\r' '\n' < $WGET_ERR 2>/dev/null | grep -v '^ *$' | tail -n 1)"
+}
+
 # download $1 to $2, giving up after FETCH_TIMEOUT seconds
 download() {
     rm -f "$2"
-    wget -q -O "$2" "$1" &
+    wget -q -O "$2" "$1" 2>$WGET_ERR &
     wpid=$!
     ( sleep "$FETCH_TIMEOUT"; kill $wpid 2>/dev/null ) &
     kpid=$!
@@ -164,11 +196,11 @@ loop() {
     load_conf
     LOOP_PID=$$
     log "started; url=$SERVER_URL interval=$INTERVAL"
-    lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
     if [ "$STOP_FRAMEWORK" = "yes" ]; then
         /etc/init.d/framework stop >/dev/null 2>&1
         sleep 2
     fi
+    keep_awake
     eips -c >/dev/null 2>&1
 
     LISTENERS=
@@ -199,9 +231,12 @@ loop() {
             kill $LISTENERS 2>/dev/null
             exit 0
         fi
+        keep_awake
         cur=$(screen)
         u="$SERVER_URL?screen=$cur&battery=$(battery)"
-        if fetch "$u" || { ensure_wifi && fetch "$u"; }; then
+        # every third failure in a row, also try turning wifi off and on
+        if fetch "$u" || { ensure_wifi && fetch "$u"; } ||
+            { [ $((fails % 3)) -eq 2 ] && reset_wifi && fetch "$u"; }; then
             fails=0
             # full (flashing) refresh on a screen switch, so no ghost of the old
             # screen remains, and every FULL_REFRESH_EVERY updates
@@ -216,7 +251,7 @@ loop() {
             sync_clock
         else
             fails=$((fails + 1))
-            log "fetch failed ($fails): $u"
+            log "fetch failed ($fails): $u; $(net_info)"
             show_error "No dashboard from $SERVER_IP ($fails)"
         fi
         # button pressed while fetching: get the new screen right away
@@ -270,7 +305,7 @@ stop() {
     for p in $(pidof dd 2>/dev/null); do
         tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null | grep -q "if=/dev/input/" && kill $p 2>/dev/null
     done
-    lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
+    lipc-set-prop -i com.lab126.powerd preventScreenSaver 0 2>/dev/null
     load_conf
     if [ "$STOP_FRAMEWORK" = "yes" ] && ! pidof cvm >/dev/null 2>&1; then
         eips -c >/dev/null 2>&1

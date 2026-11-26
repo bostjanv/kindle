@@ -18,15 +18,16 @@ MNT=${USBDISK_MNT:-/tmp/kindle-usbdisk}
 USBDISK=$ROOT/tools/usbdisk/usbdisk
 DL=$ROOT/downloads/x
 
-[ -x "$USBDISK" ] || gcc -O2 -o "$USBDISK" "$ROOT/tools/usbdisk/usbdisk.c" $(pkg-config --cflags --libs libusb-1.0 fuse3)
+[ "$USBDISK" -nt "$ROOT/tools/usbdisk/usbdisk.c" ] || gcc -O2 -o "$USBDISK" "$ROOT/tools/usbdisk/usbdisk.c" $(pkg-config --cflags --libs libusb-1.0 fuse3)
 
 mkdir -p "$MNT"
 cleanup() { sync; sudo fusermount3 -u "$MNT" 2>/dev/null || true; }
 trap cleanup EXIT
-if ! [ -f "$MNT/disk" ]; then
-    sudo "$USBDISK" -s -o allow_other "$MNT"
-    for _ in $(seq 20); do [ -f "$MNT/disk" ] && break; sleep 0.5; done
-fi
+# Always mount afresh: a mount left over from an earlier run holds a USB handle
+# that is dead once the Kindle was replugged or ejected, and only gives I/O errors.
+sudo fusermount3 -u "$MNT" 2>/dev/null || true
+sudo "$USBDISK" -s -o allow_other "$MNT" || exit 1
+for _ in $(seq 20); do [ -f "$MNT/disk" ] && break; sleep 0.5; done
 [ -f "$MNT/disk" ] || { echo "Kindle drive not available (is it plugged in and in USB drive mode?)" >&2; exit 1; }
 
 # Superfloppy (FAT directly on the device) or partitioned?

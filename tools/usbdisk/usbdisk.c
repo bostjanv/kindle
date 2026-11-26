@@ -139,6 +139,22 @@ int main(int argc, char **argv) {
     nblocks = ((uint64_t)buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3]) + 1;
     blksz = buf[4] << 24 | buf[5] << 16 | buf[6] << 8 | buf[7];
     fprintf(stderr, "capacity: %llu blocks x %u = %.1f MB\n", (unsigned long long)nblocks, blksz, nblocks * blksz / 1e6);
+    // The Kindle can enumerate and report a capacity without actually exporting
+    // its drive (e.g. while the dashboard runs with the framework stopped, or
+    // after it was ejected); every read then fails. Catch that here instead of
+    // letting mtools report a cryptic I/O error.
+    if (!getenv("USBDISK_EJECT")) {
+        uint8_t *b0 = malloc(blksz);
+        if (!b0 || rw_blocks(0, 1, b0, 0)) {
+            uint8_t rs[6] = {0x03, 0, 0, 0, 18, 0};
+            memset(buf, 0, 18); scsi(rs, 6, buf, 18, 1);
+            fprintf(stderr, "cannot read the drive (sense %x/%02x/%02x): the Kindle is not in USB drive mode.\n"
+                    "If the dashboard is running, stop it (Shift D X), then unplug and replug the Kindle.\n",
+                    buf[2] & 0xf, buf[12], buf[13]);
+            return 1;
+        }
+        free(b0);
+    }
     if (getenv("USBDISK_EJECT")) { // START STOP UNIT, LoEj=1 Start=0: Kindle leaves USB drive mode
         uint8_t ss[6] = {0x1B, 0, 0, 0, 0x02, 0};
         int r = scsi(ss, 6, NULL, 0, 0);

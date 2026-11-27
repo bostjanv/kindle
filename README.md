@@ -14,13 +14,13 @@ xkcd). The **page-turn buttons** switch screens.
 ```
 
 The PC renders the picture and the Kindle only downloads and displays it, so new
-widgets (xkcd, transit and so on) only need Python changes on the PC.
+widgets (xkcd, transit and so on) only need server changes on the PC.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `server/` | `kindle-dash` Python server: renders the PNG, widget registry in `kindle_dash/widgets/` |
+| `server/` | `kindle-dash` Rust server: renders the PNG, widgets in `src/widgets/` |
 | `kindle/dashboard/` | goes to the Kindle drive as `dashboard/`: refresh loop + `dashboard.conf` (server IP) |
 | `kindle/launchpad/dashboard.ini` | Launchpad hotkeys |
 | `kindle/package/` | autostart OTA package (built with KindleTool, signed with the jailbreak key) |
@@ -30,21 +30,37 @@ widgets (xkcd, transit and so on) only need Python changes on the PC.
 
 ## 1. Run the server on the PC
 
+Needs a Rust toolchain ([rustup](https://rustup.rs)). Fonts are built into the binary.
+
 ```sh
 cd server
-python3 -m venv .venv && .venv/bin/pip install -e .
+cargo build --release
 cp config.example.toml config.toml     # set location, timezone, calendar sources
-.venv/bin/kindle-dash serve -c config.toml
+target/release/kindle-dash serve -c config.toml
+target/release/kindle-dash render -c config.toml -o out.png --screen 1   # one PNG, no server
 ```
 
 Open `http://<pc-ip>:8080/` in a browser to preview the dashboard. The Kindle
 fetches `http://<pc-ip>:8080/dashboard.png`. For Google Calendar, use
 *Settings → your calendar → Secret address in iCal format*.
-For a [Remind](https://dianne.skoll.ca/projects/remind/) file, add
-`{ remind = "~/.reminders" }` to `sources`. It is converted with `rem2ics`, which
-`pip install` brings in, and it also needs the `remind` program (`apt install remind`).
+For a [Remind](https://dianne.skoll.ca/projects/remind/) file (or a directory of
+`*.rem` files), add `{ remind = "~/.reminders" }` to `sources`. It is read with
+`remind -ppp`, so the `remind` program must be on PATH (`apt install remind`).
 
 To keep it running, use `server/kindle-dash.service` (a systemd user unit).
+
+**Running the server on a Raspberry Pi (64-bit OS):** cross-compile on the PC.
+One-time setup: `sudo apt install gcc-aarch64-linux-gnu` and
+`rustup target add aarch64-unknown-linux-musl`. Then, in `server/`:
+
+```sh
+cargo build-aarch64          # → target/aarch64-unknown-linux-musl/release/kindle-dash
+scp target/aarch64-unknown-linux-musl/release/kindle-dash config.toml pi@<pi-ip>:kindle-dash/
+```
+
+The binary is static, so it runs on any aarch64 Linux. `cargo build-aarch64-gnu` builds a
+glibc binary instead, which only runs where glibc is at least as new as on the build host.
+The aliases and linker settings are in `server/.cargo/config.toml`.
 
 ## 2. Jailbreak + install (one-time)
 
@@ -89,20 +105,32 @@ the last refresh.
 
 ## Adding a widget
 
-Create `server/kindle_dash/widgets/transit.py`:
+Create `server/src/widgets/transit.rs`:
 
-```python
-from . import Cached, register
+```rust
+use anyhow::Result;
+use toml::Table;
 
-@register("transit")
-class Transit:
-    def __init__(self, cfg): ...
-    def draw(self, img, draw, box, ctx): ...   # draw inside box (x0, y0, x1, y1)
+use super::Widget;
+use crate::canvas::{Bounds, Canvas};
+use crate::render::Context;
+
+pub struct Transit { /* settings, Cached<...> data */ }
+
+impl Transit {
+    pub fn new(cfg: &Table) -> Result<Transit> { ... }   // cfg: the [transit] section
+}
+
+impl Widget for Transit {
+    fn name(&self) -> &'static str { "Transit" }
+    fn draw(&mut self, c: &mut Canvas, b: Bounds, ctx: &Context) -> Result<()> { ... }  // draw inside b
+}
 ```
 
-Import it at the bottom of `widgets/__init__.py`, then add `[[layout]] widget = "transit"`
-(and an `[transit]` section) to `config.toml`. Wrap network calls in `Cached` so a
-failure shows the last good data instead of a blank panel.
+Add `mod transit;` and a `"transit"` arm to `create()` in `src/widgets/mod.rs`, then add
+`[[screens.layout]] widget = "transit"` (and a `[transit]` section) to `config.toml`.
+Wrap network calls in `cache::Cached` so a failure shows the last good data instead
+of a blank panel; an error returned from `draw` is shown in the widget's box.
 
 ## Undo
 

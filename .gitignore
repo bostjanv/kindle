@@ -1,6 +1,7 @@
 downloads/
 build/
 server/.venv/
+server/target/
 server/config.toml
 server/*.egg-info/
 __pycache__/

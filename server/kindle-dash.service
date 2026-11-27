@@ -1,6 +1,7 @@
 # systemd user unit. Install:
+#   cargo build --release            # in this directory
 #   mkdir -p ~/.config/systemd/user && cp kindle-dash.service ~/.config/systemd/user/
-#   edit WorkingDirectory below, then:
+#   edit the paths below, then:
 #   systemctl --user daemon-reload && systemctl --user enable --now kindle-dash
 #   loginctl enable-linger $USER     # keep running when logged out
 [Unit]
@@ -9,7 +10,7 @@ After=network-online.target
 
 [Service]
 WorkingDirectory=%h/dev/kindle/server
-ExecStart=%h/dev/kindle/server/.venv/bin/python -m kindle_dash serve -c config.toml
+ExecStart=%h/dev/kindle/server/target/release/kindle-dash serve -c config.toml
 Restart=on-failure
 
 [Install]

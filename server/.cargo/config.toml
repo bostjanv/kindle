@@ -1,0 +1,29 @@
+# Cross-compiling for 64-bit ARM (Raspberry Pi 3/4/5 and similar, 64-bit OS).
+#
+# One-time setup on a Debian/Ubuntu x86_64 host:
+#   sudo apt install gcc-aarch64-linux-gnu
+#   rustup target add aarch64-unknown-linux-musl aarch64-unknown-linux-gnu
+#
+# Build:
+#   cargo build-aarch64        # static musl binary, runs on any aarch64 Linux
+#   cargo build-aarch64-gnu    # glibc binary; needs a glibc at least as new as the host's
+#
+# Output: target/<target>/release/kindle-dash
+
+[alias]
+build-aarch64 = "build --release --target aarch64-unknown-linux-musl"
+build-aarch64-gnu = "build --release --target aarch64-unknown-linux-gnu"
+
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-gnu-gcc"
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+
+# C compiler for build scripts (ring, used by rustls for HTTPS)
+[env]
+CC_aarch64_unknown_linux_musl = "aarch64-linux-gnu-gcc"
+CC_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-gcc"
+AR_aarch64_unknown_linux_musl = "aarch64-linux-gnu-ar"
+AR_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-ar"

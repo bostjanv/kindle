@@ -7,12 +7,14 @@
 # Build:
 #   cargo build-aarch64        # static musl binary, runs on any aarch64 Linux
 #   cargo build-aarch64-gnu    # glibc binary; needs a glibc at least as new as the host's
+#   cargo build-x86_64-musl    # static x86_64 binary (rustup target add x86_64-unknown-linux-musl)
 #
 # Output: target/<target>/release/kindle-dash
 
 [alias]
 build-aarch64 = "build --release --target aarch64-unknown-linux-musl"
 build-aarch64-gnu = "build --release --target aarch64-unknown-linux-gnu"
+build-x86_64-musl = "build --release --target x86_64-unknown-linux-musl"
 
 [target.aarch64-unknown-linux-musl]
 linker = "aarch64-linux-gnu-gcc"
@@ -21,9 +23,14 @@ rustflags = ["-C", "target-feature=+crt-static"]
 [target.aarch64-unknown-linux-gnu]
 linker = "aarch64-linux-gnu-gcc"
 
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static"]
+
 # C compiler for build scripts (ring, used by rustls for HTTPS)
 [env]
 CC_aarch64_unknown_linux_musl = "aarch64-linux-gnu-gcc"
 CC_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-gcc"
 AR_aarch64_unknown_linux_musl = "aarch64-linux-gnu-ar"
 AR_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-ar"
+# the host gcc builds ring for x86_64 musl too (no musl-tools needed)
+CC_x86_64_unknown_linux_musl = "gcc"

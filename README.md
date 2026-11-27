@@ -60,7 +60,8 @@ scp target/aarch64-unknown-linux-musl/release/kindle-dash config.toml pi@<pi-ip>
 
 The binary is static, so it runs on any aarch64 Linux. `cargo build-aarch64-gnu` builds a
 glibc binary instead, which only runs where glibc is at least as new as on the build host.
-The aliases and linker settings are in `server/.cargo/config.toml`.
+For a static x86_64 binary, `rustup target add x86_64-unknown-linux-musl` once, then
+`cargo build-x86_64-musl`. The aliases and linker settings are in `server/.cargo/config.toml`.
 
 ## 2. Jailbreak + install (one-time)
 
